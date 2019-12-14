@@ -23,7 +23,7 @@ AM_INIT_AUTOMAKE
 AM_SILENT_RULES([yes])
 LT_INIT
 
-CXXFLAGS="-O2 -g -Wall"
+CXXFLAGS="-O2 -g -Wall -static-libgcc -static-libstdc++"
 
 # Checks for programs.
 AC_PROG_CXX
