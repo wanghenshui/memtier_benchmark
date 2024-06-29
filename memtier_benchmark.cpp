@@ -16,6 +16,7 @@
  * along with memtier_benchmark.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "config_types.h"
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -504,7 +505,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
     int c;
     char *endptr;
     while ((c = getopt_long(argc, argv,
-                "vs:S:p:P:o:x:DRn:c:t:d:a:h:46", long_options, &option_index)) != -1)
+                "vs:S:p:P:o:x:DRn:c:t:d:a:H:h:46", long_options, &option_index)) != -1)
     {
         switch (c) {
                 case o_help:
@@ -517,6 +518,13 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     puts("the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.");
                     puts("There is NO WARRANTY, to the extent permitted by law.");
                     exit(0);
+                case 'H':{
+                    // sep with `,`
+                    std::string server_list = optarg;
+                    cfg->server_list = string_split(server_list,',');
+                    cfg->server_list_num = cfg->server_list.size();
+                }
+                    break;
                 case 's':
                 case 'h':
                     cfg->server = optarg;
@@ -1074,6 +1082,8 @@ struct cg_thread {
         assert(m_protocol != NULL);
 
         m_cg = new client_group(m_config, m_protocol, m_obj_gen);
+
+        benchmark_debug_log("new cg_thread %p %p %p successfully set up.\n", this, m_cg, m_protocol);
     }
 
     ~cg_thread()
@@ -1446,13 +1456,28 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    if (cfg.server != NULL && cfg.port > 0) {
-        try {
-            cfg.server_addr = new server_addr(cfg.server, cfg.port, cfg.resolution);
-        } catch (std::runtime_error& e) {
-            benchmark_error_log("%s:%u: error: %s\n",
-                    cfg.server, cfg.port, e.what());
-            exit(1);
+    if (cfg.server_list_num > 0) {
+        for (auto& s : cfg.server_list) {
+            try {
+                cfg.server_list_addr.push_back(std::make_shared<server_addr>(server_addr(s, cfg.resolution)));
+            } catch (std::runtime_error& e) {
+                benchmark_error_log("%s: error: %s\n",
+                        s.c_str(), e.what());
+                exit(1);
+            }
+        }
+        assert(cfg.server_list_num == cfg.server_list_addr.size());
+
+        assert(cfg.server_list.size() == cfg.server_list_addr.size());
+    } else {
+        if (cfg.server != NULL && cfg.port > 0) {
+            try {
+                cfg.server_addr = new server_addr(cfg.server, cfg.port, cfg.resolution);
+            } catch (std::runtime_error& e) {
+                benchmark_error_log("%s:%u: error: %s\n",
+                        cfg.server, cfg.port, e.what());
+                exit(1);
+            }
         }
     }
 

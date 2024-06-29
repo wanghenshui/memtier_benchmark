@@ -19,6 +19,7 @@
 #ifndef _MEMTIER_BENCHMARK_H
 #define _MEMTIER_BENCHMARK_H
 
+#include <memory>
 #include <vector>
 #include "config_types.h"
 
@@ -51,6 +52,9 @@ enum PROTOCOL_TYPE {
 
 struct benchmark_config {
     const char *server;
+    int server_list_num = 0;
+    std::vector<std::string> server_list;
+    std::vector<std::shared_ptr<struct server_addr>> server_list_addr;
     unsigned short port;
     struct server_addr *server_addr;
     const char *unix_socket;

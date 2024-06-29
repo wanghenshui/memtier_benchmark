@@ -229,9 +229,29 @@ server_addr::server_addr(const char *hostname, int port, int resolution) :
     m_hostname(hostname), m_port(port), m_server_addr(NULL), m_used_addr(NULL), m_resolution(resolution), m_last_error(0)
 {
     int error = resolve();
+    if (error != 0) {
+        fprintf(stderr, "resolve: %d %s\n", error, gai_strerror(error));
+        exit(error);
+    }
+    pthread_mutex_init(&m_mutex, NULL);
+}
 
-    if (error != 0)
-        throw std::runtime_error(std::string(gai_strerror(error)));
+server_addr::server_addr(const std::string& hostname_and_port, int resolution) :
+    m_hostname(), m_port(0), m_server_addr(NULL), m_used_addr(NULL), m_resolution(resolution), m_last_error(0)
+{
+    auto ip_port = string_split(hostname_and_port, ':');
+    assert(ip_port.size() == 2);
+    m_hostname = ip_port[0];
+    m_port_str = ip_port[1];
+    
+    fprintf(stderr, "server_addr  %s\n", hostname_and_port.c_str());
+    fprintf(stderr, "ip  %s port  %s\n", m_hostname.c_str(), m_port_str.c_str());
+    int error = resolve();
+
+    if (error != 0) {
+        fprintf(stderr, "resolve: %d %s\n", error, gai_strerror(error));
+        exit(error);
+    }
 
     pthread_mutex_init(&m_mutex, NULL);
 }
@@ -248,16 +268,21 @@ server_addr::~server_addr()
 
 int server_addr::resolve(void)
 {
-    char port_str[20];
     struct addrinfo hints;
 
     memset(&hints, 0, sizeof(hints));
     hints.ai_flags = AI_PASSIVE;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_family = m_resolution;
-
-    snprintf(port_str, sizeof(port_str)-1, "%u", m_port);
-    m_last_error = getaddrinfo(m_hostname.c_str(), port_str, &hints, &m_server_addr);
+    if (m_port_str.empty()) {
+        char port_str[20];
+        snprintf(port_str, sizeof(port_str)-1, "%u", m_port);
+        m_last_error = getaddrinfo(m_hostname.c_str(), port_str, &hints, &m_server_addr);
+    } else {
+        m_last_error = getaddrinfo(m_hostname.c_str(), m_port_str.c_str(), &hints, &m_server_addr);
+    }
+    if (m_last_error != 0)
+        fprintf(stderr, "getaddrinfo: %d %s\n", m_last_error, gai_strerror(m_last_error));
     return m_last_error;
 }
 
@@ -268,8 +293,10 @@ int server_addr::get_connect_info(struct connect_info *ci)
         m_used_addr = m_used_addr->ai_next;
     if (!m_used_addr) {
         if (m_server_addr) {
-            freeaddrinfo(m_server_addr);
-            m_server_addr = NULL;
+            // mac has bug, always coredump here
+            // fuck it, just leak
+            //freeaddrinfo(m_server_addr);
+            //m_server_addr = NULL;
         }
         if (resolve() == 0) {
             m_used_addr = m_server_addr;
@@ -288,6 +315,9 @@ int server_addr::get_connect_info(struct connect_info *ci)
         ci->ci_addrlen = m_used_addr->ai_addrlen;
     }
     pthread_mutex_unlock(&m_mutex);
+
+    if (m_last_error != 0)
+        fprintf(stderr, "m_last_error: %d %s\n", m_last_error, gai_strerror(m_last_error));
     return m_last_error;
 }
 

@@ -27,7 +27,25 @@
 
 #include <vector>
 #include <string>
+#include <string>
+#include <sstream>
+#include <vector>
+#include <iterator>
 
+template <typename Out>
+void inline string_split(const std::string &s, char delim, Out result) {
+    std::istringstream iss(s);
+    std::string item;
+    while (std::getline(iss, item, delim)) {
+        *result++ = item;
+    }
+}
+
+inline std::vector<std::string> string_split(const std::string &s, char delim) {
+    std::vector<std::string> elems;
+    string_split(s, delim, std::back_inserter(elems));
+    return elems;
+}
 struct config_range {
     int min;
     int max;
@@ -87,10 +105,12 @@ struct connect_info {
 
 struct server_addr {
     server_addr(const char *hostname, int port, int resolution);
+    server_addr(const std::string& hostname_and_addr, int resolution);
     virtual ~server_addr();
 
     int get_connect_info(struct connect_info *ci);
     const char* get_last_error(void) const;
+    std::string m_port_str;
 protected:
     int resolve(void);
     pthread_mutex_t m_mutex;

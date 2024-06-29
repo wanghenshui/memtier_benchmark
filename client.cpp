@@ -176,26 +176,52 @@ int client::connect(void)
 
     // get address information
     if (m_config->unix_socket == NULL) {
-        if (m_config->server_addr->get_connect_info(&addr) != 0) {
-            benchmark_error_log("connect: resolve error: %s\n", m_config->server_addr->get_last_error());
-            return -1;
-        }
+        if (m_config->server_list_num > 0){
+            static int count = 0;
+            assert(m_config->server_list_addr.size() == m_config->server_list_num);
+            auto idx = count % m_config->server_list_num;
+            auto c = m_config->server_list_addr[idx];
+            assert(c!=nullptr);
+            if (c == nullptr || c->get_connect_info(&addr) != 0) {
+                benchmark_error_log("connect: resolve error\n");
+                return -1;
+            }
 
-        // Just in case we got domain name and not ip, we convert it
-        char address[INET6_ADDRSTRLEN];
-        if (addr.ci_family == PF_INET) {
-            struct sockaddr_in *ipv4 = (struct sockaddr_in *)addr.ci_addr;
-            inet_ntop(AF_INET, &(ipv4->sin_addr), address, INET_ADDRSTRLEN);
+            // Just in case we got domain name and not ip, we convert it
+            char address[INET6_ADDRSTRLEN];
+            if (addr.ci_family == PF_INET) {
+                struct sockaddr_in *ipv4 = (struct sockaddr_in *)addr.ci_addr;
+                inet_ntop(AF_INET, &(ipv4->sin_addr), address, INET_ADDRSTRLEN);
+            } else {
+                struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)addr.ci_addr;
+                inet_ntop(AF_INET6, &(ipv6->sin6_addr), address, INET6_ADDRSTRLEN);
+            }
+
+            // save address and port
+            sc->set_address_port(address, c->m_port_str.c_str());            
+            count++;
         } else {
-            struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)addr.ci_addr;
-            inet_ntop(AF_INET6, &(ipv6->sin6_addr), address, INET6_ADDRSTRLEN);
+            if (m_config->server_addr->get_connect_info(&addr) != 0) {
+                benchmark_error_log("connect: resolve error: %s\n", m_config->server_addr->get_last_error());
+                return -1;
+            }
+
+            // Just in case we got domain name and not ip, we convert it
+            char address[INET6_ADDRSTRLEN];
+            if (addr.ci_family == PF_INET) {
+                struct sockaddr_in *ipv4 = (struct sockaddr_in *)addr.ci_addr;
+                inet_ntop(AF_INET, &(ipv4->sin_addr), address, INET_ADDRSTRLEN);
+            } else {
+                struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)addr.ci_addr;
+                inet_ntop(AF_INET6, &(ipv6->sin6_addr), address, INET6_ADDRSTRLEN);
+            }
+
+            char port_str[20];
+            snprintf(port_str, sizeof(port_str)-1, "%u", m_config->port);
+
+            // save address and port
+            sc->set_address_port(address, port_str);
         }
-
-        char port_str[20];
-        snprintf(port_str, sizeof(port_str)-1, "%u", m_config->port);
-
-        // save address and port
-        sc->set_address_port(address, port_str);
     }
 
     // call connect
@@ -589,6 +615,8 @@ client_group::client_group(benchmark_config* config, abstract_protocol *protocol
 
     assert(protocol != NULL);
     assert(obj_gen != NULL);
+
+    benchmark_debug_log("new client_group %p successfully set up.\n", this);
 }
 
 client_group::~client_group(void)
@@ -607,7 +635,7 @@ client_group::~client_group(void)
 int client_group::create_clients(int num)
 {
     for (int i = 0; i < num; i++) {
-        client* c;
+        client* c = nullptr;
 
         if (m_config->cluster_mode)
             c = new cluster_client(this);
